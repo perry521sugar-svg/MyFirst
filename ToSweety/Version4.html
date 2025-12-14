@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>小胆宝贝生日快乐 - 粒子云</title>
+    <style>
+        /* 导入可爱的中文字体，如 Ma Shan Zheng (马山正) 或其他圆润字体 */
+        @import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap');
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #E6E6FA, #B0E0E6); /* 淡紫 + 奶蓝 */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .camera-feed {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            transform: scaleX(-1); /* 镜像 */
+            opacity: 0.7;
+            transition: opacity 1s ease, border 1s ease;
+            z-index: 20;
+            background: #000;
+        }
+
+        .loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 240, 245, 1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 1s ease;
+            flex-direction: column;
+        }
+        
+        .loading-text {
+            color: #9370DB;
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+
+        /* 簡單的載入動畫 */
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #E6E6FA;
+            border-top: 5px solid #9370DB;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .control-panel {
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            border-radius: 15px;
+            color: #483D8B;
+            max-width: 300px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            margin: 0 0 10px 0;
+            text-shadow: 0 0 5px rgba(255,255,255,0.8);
+        }
+
+        .instructions {
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .upload-btn {
+            margin-top: 10px;
+            background: linear-gradient(45deg, #FFB6C1, #9370DB);
+            border: none;
+            padding: 10px 20px;
+            color: white;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s;
+            pointer-events: auto;
+            display: inline-block;
+        }
+
+        .upload-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 10px #FFB6C1;
+        }
+        
+        .status-badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.8);
+            padding: 5px 15px;
+            border-radius: 20px;
+            color: #6A5ACD;
+            font-weight: bold;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 10px rgba(147, 112, 219, 0.3);
+            transition: background 0.5s, color 0.5s;
+        }
+
+        #file-input { display: none; }
+    </style>
+    <!-- Import Maps for Three.js and MediaPipe -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm"
+            }
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+</head>
+<body>
+
+    <div id="loading" class="loading-screen">
+        <div class="spinner"></div>
+        <div class="loading-text">正在準備生日驚喜...</div>
+        <div style="margin-top:10px; font-size: 0.8em; color: #666;">請允許鏡頭權限以開啟魔法互動</div>
+    </div>
+
+    <div id="ui-layer">
+        <div class="control-panel">
+            <h1>✨ 魔法手勢控制 ✨</h1>
+            <div id="instruction-text" class="instructions">
+                ✊ <b>握拳</b>：凝聚回憶 (合攏)<br>
+                🖐 <b>張開手</b>：釋放快樂 (散開)<br>
+                👋 <b>移動手掌</b>：在散開時旋轉視角<br>
+                👌 <b>捏合</b>：抓取一張照片放大
+            </div>
+            <!-- 修改按鈕文字，強調可上傳更多圖片 -->
+            <button class="upload-btn" onclick="document.getElementById('file-input').click()">➕ 上傳更多照片</button>
+            <input type="file" id="file-input" multiple accept="image/*">
+        </div>
+        <div id="status-text" class="status-badge">等待手勢...</div>
+    </div>
+
+    <video id="webcam" class="camera-feed" autoplay playsinline></video>
+    <div id="canvas-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { FilesetResolver, GestureRecognizer } from '@mediapipe/tasks-vision';
+
+        // --- 配置 ---
+        const CONFIG = {
+            particleCount: 250,
+            scatterRadius: 30,
+            sphereRadius: 8,
+            colors: [0xFFB6C1, 0x9370DB, 0x87CEEB, 0xFFFFFF, 0xFF69B4],
+            icons: ['🎂', '🕯️', '🐾', '🎀', '🎩'],
+            catText: "小膽寶貝生日快樂"
+        };
+        const SIGN_POS_COALESCED = { y: 15, z: 5 };
+        const SIGN_POS_DISPERSED = { y: 20, z: 8 };
+
+        // 🎯 修正 2：更新預載入圖片路徑列表
+        // ----------------------------------------------------------------------
+        // **修正**：根據文件結構，HTML和圖片位於同一目錄，因此移除多餘的 'ToSweety/' 前綴。
+        // ----------------------------------------------------------------------
+        const PRELOAD_IMAGE_PATHS = [
+            '微信图片_20250215021619_10_11.jpg', 
+            '微信图片_20250215021623_11_11.jpg',
+            '微信图片_20250215021628_12_11.jpg',
+            '微信图片_20250215021637_13_11.jpg',
+            '微信图片_20250215021640_14_11.jpg',
+            '微信图片_20250215021643_15_11.jpg',
+            '微信图片_20250215021650_16_11.jpg',
+            '微信图片_20250215021707_17_11.jpg',
+            '微信图片_20250215021710_18_11.jpg', 
+        ];
+
+        // --- 全域狀態 ---
+        let scene, camera, renderer, composer;
+        let particles = [];
+        let photoTextures = []; // 儲存照片紋理，index 0 為預設佔位圖
+        let defaultTextures = []; // 儲存表情符號紋理
+        let balloonGroup, petalGroup;
+        let catSignMesh;
+        
+        let gestureRecognizer;
+        let videoElement = document.getElementById('webcam');
+        let lastVideoTime = -1;
+        let results = undefined;
+        let mediaPipeFailed = false; 
+
+        const STATE = {
+            COALESCED: 'COALESCED',
+            DISPERSED: 'DISPERSED',
+            ZOOM: 'ZOOM'
+        };
+        let currentState = STATE.COALESCED;
+        let targetRotationX = 0;
+        let targetRotationY = 0;
+        let zoomedParticleIndex = -1;
+
+        // --- 初始化 ---
+
+        async function init() {
+            // 1. Three.js 設定
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0xE6E6FA, 0.015);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 40;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 0.85; 
+
+            container.appendChild(renderer.domElement);
+
+            // 後期處理 (Bloom 輝光)
+            const renderScene = new RenderPass(scene, camera);
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 
+                0.8, // 降低強度 (Strength)
+                0.4, 
+                0.85
+            );
+            bloomPass.threshold = 0.1; 
+            bloomPass.strength = 0.8; 
+            bloomPass.radius = 0.3;
+
+            composer = new EffectComposer(renderer);
+            composer.addPass(renderScene);
+            // 🎨 移除 catSignMesh 上的 Bloom 效果的關鍵在於下面的 createCatSign 函數，
+            // 這裡保留 Bloom 讓其他粒子發光。
+            composer.addPass(bloomPass); 
+
+            // 燈光
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0); 
+            scene.add(ambientLight);
+            const pointLight = new THREE.PointLight(0xFFB6C1, 1.5, 100); 
+            pointLight.position.set(10, 10, 10);
+            scene.add(pointLight);
+
+            // 2. 資源生成與載入
+            generateTextures(); 
+            await loadPreloadedImages(); // 載入預設圖片
+            createParticles(); 
+            createDecorations();
+            createCatSign(); 
+
+            // 3. MediaPipe 設定 (非同步，可能失敗)
+            await setupMediaPipe();
+
+            // 4. 監聽器
+            window.addEventListener('resize', onWindowResize);
+            document.getElementById('file-input').addEventListener('change', handleImageUpload);
+            
+            // 5. 啟動循環
+            animate();
+        }
+
+        // --- 資源生成輔助函式 ---
+        function generateTextures() {
+            CONFIG.icons.forEach(icon => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 128;
+                canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                ctx.font = '80px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'white';
+                ctx.fillText(icon, 64, 64);
+                
+                const texture = new THREE.CanvasTexture(canvas);
+                defaultTextures.push(texture);
+            });
+
+            // 初始照片/上傳提示圖 (作為 index 0 佔位符)
+            const pCanvas = document.createElement('canvas');
+            pCanvas.width = 512;
+            pCanvas.height = 512;
+            const ctx = pCanvas.getContext('2d');
+            ctx.fillStyle = '#1A1A1A'; 
+            ctx.fillRect(0,0,512,512);
+            ctx.fillStyle = '#333';
+            ctx.fillRect(20,20,472,472); 
+            ctx.fillStyle = '#AAA';
+            ctx.font = '40px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('點擊下方按鈕上傳照片', 256, 256);
+            
+            const pTexture = new THREE.CanvasTexture(pCanvas);
+            photoTextures.push(pTexture);
+        }
+
+        async function loadPreloadedImages() {
+            return new Promise(resolve => {
+                const loader = new THREE.TextureLoader();
+                let loadedCount = 0;
+                
+                if (PRELOAD_IMAGE_PATHS.length === 0) {
+                    resolve();
+                    return;
+                }
+                
+                let actualLoadedImages = 0; // 記錄實際載入成功的圖片數量
+
+                PRELOAD_IMAGE_PATHS.forEach(path => {
+                    loader.load(
+                        path,
+                        (texture) => {
+                            // 載入成功：將圖片紋理添加到 photoTextures 列表
+                            photoTextures.push(texture); 
+                            loadedCount++;
+                            actualLoadedImages++;
+                            if (loadedCount === PRELOAD_IMAGE_PATHS.length) {
+                                console.log(`已成功載入 ${actualLoadedImages} 張預載入圖片。`);
+                                resolve();
+                            }
+                        },
+                        undefined, // onProgress
+                        (error) => {
+                            // 載入失敗 (e.g., 404), 繼續載入下一個
+                            console.warn(`Failed to load preloaded image: ${path}. Please check the path and file existence.`);
+                            console.error("Loader Error:", error); // 打印詳細錯誤信息
+                            loadedCount++;
+                            if (loadedCount === PRELOAD_IMAGE_PATHS.length) {
+                                console.log(`已成功載入 ${actualLoadedImages} 張預載入圖片。`);
+                                resolve();
+                            }
+                        }
+                    );
+                });
+            });
+        }
+
+        function createParticles() {
+            const geometry = new THREE.PlaneGeometry(2.5, 2.5); 
+            const group = new THREE.Group();
+            scene.add(group);
+
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                const isPhoto = Math.random() > 0.6;
+                
+                let material;
+                if (isPhoto) {
+                    const initialMap = photoTextures.length > 0 ? photoTextures[0] : defaultTextures[0];
+                    material = new THREE.MeshBasicMaterial({ 
+                        map: initialMap, 
+                        transparent: true,
+                        side: THREE.DoubleSide,
+                        depthWrite: false, 
+                        // 基礎顏色調暗，減少輝光影響，突出貼圖
+                        color: 0x777777 
+                    });
+                } else {
+                    const texIndex = Math.floor(Math.random() * defaultTextures.length);
+                    material = new THREE.MeshBasicMaterial({ 
+                        map: defaultTextures[texIndex], 
+                        transparent: true,
+                        color: CONFIG.colors[Math.floor(Math.random() * CONFIG.colors.length)],
+                        side: THREE.DoubleSide,
+                        depthWrite: false
+                    });
+                }
+
+                const mesh = new THREE.Mesh(geometry, material);
+                
+                if (isPhoto) {
+                    mesh.scale.set(1.5, 1.5, 1.5); 
+                }
+
+                const phi = Math.acos(-1 + (2 * i) / CONFIG.particleCount);
+                const theta = Math.sqrt(CONFIG.particleCount * Math.PI) * phi;
+                
+                const r = CONFIG.sphereRadius + (Math.random() - 0.5) * 2;
+                const x = r * Math.cos(theta) * Math.sin(phi);
+                const y = r * Math.sin(theta) * Math.sin(phi);
+                const z = r * Math.cos(phi);
+
+                mesh.position.set(x, y, z);
+                mesh.lookAt(0,0,0);
+
+                mesh.userData = {
+                    originalPos: new THREE.Vector3(x, y, z),
+                    scatterPos: new THREE.Vector3(
+                        (Math.random() - 0.5) * CONFIG.scatterRadius * 2,
+                        (Math.random() - 0.5) * CONFIG.scatterRadius * 1.5,
+                        (Math.random() - 0.5) * CONFIG.scatterRadius * 1.5
+                    ),
+                    velocity: new THREE.Vector3(0, Math.random() * 0.02, 0),
+                    rotationSpeed: new THREE.Vector3(Math.random()*0.01, Math.random()*0.01, 0),
+                    isPhoto: isPhoto,
+                    id: i
+                };
+
+                particles.push(mesh);
+                group.add(mesh);
+            }
+            
+            // 初始創建粒子後，立即嘗試更新紋理
+            updateParticlesWithPhotos();
+        }
+
+        // 🎯 修正 1：創建布偶貓和生日牌 (調整材質顏色以降低 Bloom 影響)
+        function createCatSign() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            // --- 繪製布偶貓 (Ragdoll Cat) ---
+            ctx.save();
+            ctx.translate(256, 180);
+
+            // 1. 頭部 (偏白，布偶貓特徵)
+            ctx.fillStyle = '#FFFFFF'; 
+            ctx.beginPath(); 
+            ctx.arc(0, 0, 100, 0, Math.PI * 2); 
+            ctx.fill();
+            
+            // 2. 特徵色塊 (棕色/米色)
+            ctx.fillStyle = '#A0522D'; 
+            // 耳朵
+            ctx.beginPath(); ctx.moveTo(-70, -100); ctx.lineTo(-110, -140); ctx.lineTo(-30, -100); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(70, -100); ctx.lineTo(110, -140); ctx.lineTo(30, -100); ctx.fill();
+            // 面部 V 形色塊
+            ctx.beginPath();
+            ctx.moveTo(0, 50);
+            ctx.bezierCurveTo(-50, 0, -100, -70, -60, -80);
+            ctx.lineTo(60, -80);
+            ctx.bezierCurveTo(100, -70, 50, 0, 0, 50);
+            ctx.fill();
+
+            // 3. 藍眼睛
+            ctx.fillStyle = '#ADD8E6'; // 淺藍色
+            ctx.beginPath(); ctx.arc(-35, -20, 18, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(35, -20, 18, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#00008B'; // 深藍色瞳孔
+            ctx.beginPath(); ctx.arc(-35, -20, 6, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(35, -20, 6, 0, Math.PI*2); ctx.fill();
+            
+            // 4. 鼻子和嘴巴
+            ctx.fillStyle = '#FFC0CB'; // 粉色鼻子
+            ctx.beginPath(); ctx.arc(0, 10, 10, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#333'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0, 20); ctx.lineTo(0, 35); ctx.stroke(); // 嘴巴線
+            
+            ctx.restore();
+
+            // --- 繪製生日牌 ---
+            ctx.save();
+            ctx.translate(256, 380); // 牌子位置在貓的下方
+
+            // 牌子背景 (粉色邊框，白色底)
+            ctx.fillStyle = '#FFFFFF'; // 白色底
+            ctx.strokeStyle = '#FF69B4'; // 粉色邊框
+            ctx.lineWidth = 10;
+            ctx.beginPath(); 
+            ctx.roundRect(-220, -60, 440, 120, 25);
+            ctx.fill(); 
+            ctx.stroke();
+
+            // 文本 (可愛風)
+            ctx.fillStyle = '#FF69B4'; // 粉紅色填充
+            ctx.strokeStyle = '#C71585'; // 深粉色描邊
+            ctx.lineWidth = 4;
+            ctx.font = 'bold 50px "Ma Shan Zheng", "Comic Sans MS", "Microsoft YaHei", sans-serif'; 
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = "rgba(0,0,0,0.3)";
+            ctx.shadowBlur = 5;
+            
+            ctx.strokeText(CONFIG.catText, 0, 0); 
+            ctx.fillText(CONFIG.catText, 0, 0);
+
+            ctx.restore();
+            // --- 繪製結束 ---
+
+            const texture = new THREE.CanvasTexture(canvas);
+            
+            // 🎯 修改 1: 降低材質顏色，減少對 Bloom 的反應，使圖像更清晰。
+            const material = new THREE.MeshBasicMaterial({ 
+                map: texture, 
+                transparent: true, 
+                side: THREE.DoubleSide,
+                // 從純白色 0xFFFFFF 調整為較低的灰色，以減少輝光強度。
+                color: 0xAAAAAA 
+            }); 
+            
+            const geometry = new THREE.PlaneGeometry(18, 18); // 尺寸保持與之前的 Sprite 相似
+            catSignMesh = new THREE.Mesh(geometry, material);
+            
+            // 讓它始終面對相機
+            catSignMesh.lookAt(camera.position); 
+            
+            catSignMesh.position.set(0, SIGN_POS_COALESCED.y, SIGN_POS_COALESCED.z); 
+            scene.add(catSignMesh);
+            
+            // 設置一個 Tween，在動畫循環中讓它始終面向相機
+            catSignMesh.userData.lookAtCamera = true;
+        }
+
+
+        function createDecorations() {
+            // ... (保持不變)
+            balloonGroup = new THREE.Group();
+            const balloonGeo = new THREE.SphereGeometry(0.5, 16, 16);
+            const balloonMat = new THREE.MeshPhongMaterial({ 
+                color: 0xFF69B4, shininess: 100, specular: 0xFFFFFF 
+            });
+            
+            for(let i=0; i<15; i++) {
+                const b = new THREE.Mesh(balloonGeo, balloonMat);
+                b.position.set((Math.random()-0.5)*40, -20 + Math.random()*20, (Math.random()-0.5)*20);
+                b.userData = { speed: 0.02 + Math.random()*0.03 };
+                balloonGroup.add(b);
+            }
+            scene.add(balloonGroup);
+
+            petalGroup = new THREE.Group();
+            const petalGeo = new THREE.PlaneGeometry(0.5, 0.5); 
+            const petalMat = new THREE.MeshBasicMaterial({ 
+                color: 0xFFB7C5, side: THREE.DoubleSide, transparent: true, opacity: 0.8, depthWrite: false 
+            });
+
+            for(let i=0; i<100; i++) {
+                const p = new THREE.Mesh(petalGeo, petalMat);
+                p.position.set((Math.random()-0.5)*50, Math.random()*30, (Math.random()-0.5)*30);
+                p.rotation.set(Math.random(), Math.random(), Math.random());
+                p.userData = { 
+                    fallSpeed: 0.02 + Math.random()*0.05,
+                    rotSpeed: 0.02 + Math.random()*0.02
+                };
+                petalGroup.add(p);
+            }
+            scene.add(petalGroup);
+        }
+
+        function handleImageUpload(event) {
+            const files = event.target.files;
+            if (!files.length) return;
+
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 512;
+                        canvas.height = 512;
+                        const ctx = canvas.getContext('2d');
+                        
+                        // 使用深色背景，確保照片在發光環境中對比度高
+                        ctx.fillStyle = '#111';
+                        ctx.fillRect(0,0,512,512);
+                        
+                        const scale = Math.min(460/img.width, 460/img.height);
+                        const w = img.width * scale;
+                        const h = img.height * scale;
+                        ctx.drawImage(img, (512-w)/2, (512-h)/2, w, h); // 居中繪製
+                        
+                        const tex = new THREE.CanvasTexture(canvas);
+                        photoTextures.push(tex);
+                        
+                        // 重新分配紋理以包含新上傳的照片
+                        updateParticlesWithPhotos();
+                    };
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function updateParticlesWithPhotos() {
+            // 只有當 photoTextures 中有至少 2 個紋理時 (1個佔位符 + 1個實際圖片) 才替換
+            if (photoTextures.length <= 1) {
+                console.log("照片數量不足，保持佔位符。");
+                return;
+            }
+            
+            let texIndex = 1; // 從 index 1 (第一張真正照片) 開始
+            particles.forEach(p => {
+                if (p.userData.isPhoto) {
+                    // 確保我們不會嘗試使用不存在的紋理
+                    if (texIndex < photoTextures.length) {
+                         p.material.map = photoTextures[texIndex];
+                         p.material.needsUpdate = true;
+                         texIndex++;
+                    } else {
+                         // 如果照片用完了，從頭開始循環
+                         texIndex = 1;
+                         p.material.map = photoTextures[texIndex];
+                         p.material.needsUpdate = true;
+                         texIndex++;
+                    }
+                }
+            });
+            console.log("粒子已成功更新為已載入的照片。");
+        }
+
+        // --- MediaPipe 邏輯 (保持不變) ---
+
+        async function setupMediaPipe() {
+            // ... (MediaPipe logic remains the same)
+            const MODEL_PATH = 'gesture_recognizer.task'; 
+            let stream;
+            
+            try {
+                // 1. 初始化手勢識別器
+                document.getElementById('status-text').innerText = "載入 AI 模型...";
+                const vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+                );
+                
+                gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: MODEL_PATH, 
+                        delegate: "GPU"
+                    },
+                    runningMode: "VIDEO",
+                    numHands: 1
+                });
+
+                document.getElementById('status-text').innerText = "請求鏡頭權限...";
+
+                // 2. 啟動鏡頭
+                const constraints = { video: { width: 320, height: 240 } };
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                videoElement.srcObject = stream;
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play();
+                    document.getElementById('status-text').innerText = "已就緒，請伸出手";
+                    // 移除載入畫面
+                    document.getElementById('loading').style.opacity = 0;
+                    setTimeout(() => document.getElementById('loading').remove(), 1000);
+
+                    // 開始預測循環
+                    predictWebcam();
+                };
+
+            } catch (error) {
+                console.error("MediaPipe or Camera setup failed:", error);
+                
+                let errorMessage = "初始化失敗：手勢互動禁用 (啟用自動旋轉)";
+                let instructions = "<b>👋 手勢互動禁用。</b><br>正在啟用自動旋轉模式。";
+                
+                // 檢查是否是模型載入失敗 (最可能的原因)
+                if (error.message && error.message.includes('Failed to fetch')) {
+                     errorMessage = `AI 模型載入失敗。請確認 ${MODEL_PATH} 檔案已上傳至同目錄。`;
+                     instructions = `<b>❗ 錯誤原因：</b>AI 模型檔案遺失或路徑錯誤。請確認「${MODEL_PATH}」檔案與 HTML 檔案在 GitHub 倉庫的**同一目錄**。`;
+                } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    errorMessage = "鏡頭權限被拒。手勢互動禁用 (啟用自動旋轉)。";
+                    instructions = "<b>❗ 鏡頭錯誤：</b>您必須允許鏡頭權限才能使用手勢互動。";
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = "未找到鏡頭設備。手勢互動禁用 (啟用自動旋轉)。";
+                } 
+                
+                document.getElementById('status-text').innerText = errorMessage;
+                document.getElementById('instruction-text').innerHTML = instructions;
+
+                videoElement.style.opacity = 0.2; 
+                videoElement.style.border = '2px solid red';
+                
+                mediaPipeFailed = true;
+                
+                document.getElementById('loading').style.opacity = 0;
+                setTimeout(() => document.getElementById('loading').remove(), 1000);
+            }
+        }
+
+        // --- (predictWebcam, processGestures, isPinching, changeState, onWindowResize 邏輯保持不變) ---
+        
+        async function predictWebcam() {
+            if (mediaPipeFailed) return;
+
+            if (lastVideoTime === -1) {
+                 // 首次成功載入，隱藏視訊源並改變狀態文字顏色
+                 videoElement.style.opacity = 0;
+                 document.getElementById('status-text').style.background = 'rgba(147, 112, 219, 0.8)'; 
+                 document.getElementById('status-text').style.color = 'white';
+            }
+            
+            if (gestureRecognizer && videoElement.currentTime !== lastVideoTime) {
+                lastVideoTime = videoElement.currentTime;
+                try {
+                    results = gestureRecognizer.recognizeForVideo(videoElement, Date.now());
+                    processGestures(results);
+                } catch (e) {
+                    console.warn("Gesture recognition skipped for this frame", e);
+                }
+            }
+            requestAnimationFrame(predictWebcam);
+        }
+
+        function processGestures(results) {
+            if (!results || !results.gestures || results.gestures.length === 0 || !results.landmarks || results.landmarks.length === 0) {
+                document.getElementById('status-text').innerText = "未檢測到手";
+                return;
+            }
+
+            const gesturesList = results.gestures[0];
+            const landmarksList = results.landmarks[0];
+            
+            if (!gesturesList || gesturesList.length === 0 || !landmarksList) {
+                document.getElementById('status-text').innerText = "檢測中...";
+                return;
+            }
+
+            const gesture = gesturesList[0].categoryName;
+            const landmarks = landmarksList;
+            
+            let status = "等待...";
+
+            if (gesture === 'Closed_Fist') {
+                status = "動作: 聚合 (握拳)";
+                changeState(STATE.COALESCED);
+            } else if (gesture === 'Open_Palm') {
+                status = "動作: 散開 (張手)";
+                changeState(STATE.DISPERSED);
+            } else if (gesture === 'Victory' || isPinching(landmarks)) {
+                if (currentState === STATE.DISPERSED) {
+                    status = "動作: 抓取照片 (捏合)";
+                    if (currentState !== STATE.ZOOM) {
+                        changeState(STATE.ZOOM);
+                    }
+                }
+            }
+            
+            if (currentState === STATE.DISPERSED && gesture !== 'Closed_Fist') {
+                if (landmarks[0]) {
+                    const x = landmarks[0].x;
+                    const y = landmarks[0].y;
+                    
+                    targetRotationY = (x - 0.5) * 4;
+                    targetRotationX = (y - 0.5) * 2;
+                    status += " | 旋轉中";
+                }
+            }
+
+            document.getElementById('status-text').innerText = status;
+        }
+
+        function isPinching(landmarks) {
+            if (!landmarks[4] || !landmarks[8]) return false;
+            const dx = landmarks[4].x - landmarks[8].x;
+            const dy = landmarks[4].y - landmarks[8].y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            return dist < 0.05; 
+        }
+
+        function changeState(newState) {
+            if (currentState === newState) return;
+            
+            // 如果是從 ZOOM 狀態切換，需要將被放大的粒子還原
+            if (currentState === STATE.ZOOM && zoomedParticleIndex !== -1) {
+                const p = particles[zoomedParticleIndex];
+                // 還原大小
+                new TWEEN.Tween(p.scale).to({ x: p.userData.isPhoto ? 1.5 : 1, y: p.userData.isPhoto ? 1.5 : 1, z: p.userData.isPhoto ? 1.5 : 1 }, 500).start();
+                
+                // 還原其他粒子的 Z 軸
+                particles.forEach(p => {
+                    new TWEEN.Tween(p.position.z).to(currentState === STATE.COALESCED ? p.userData.originalPos.z : p.userData.scatterPos.z, 500).start();
+                });
+
+                zoomedParticleIndex = -1;
+            }
+
+            currentState = newState;
+
+            if (newState === STATE.COALESCED) {
+                particles.forEach(p => {
+                    new TWEEN.Tween(p.position).to(p.userData.originalPos, 1500).easing(TWEEN.Easing.Elastic.Out).start();
+                    new TWEEN.Tween(p.rotation).to({ x: 0, y: 0, z: 0 }, 1500).onUpdate(() => p.lookAt(0,0,0)).start();
+                });
+                new TWEEN.Tween(catSignMesh.position).to(SIGN_POS_COALESCED, 1000).start();
+
+            } else if (newState === STATE.DISPERSED) {
+                particles.forEach(p => {
+                    new TWEEN.Tween(p.position).to(p.userData.scatterPos, 1500).easing(TWEEN.Easing.Back.Out).start();
+                    new TWEEN.Tween(p.rotation).to({ x: camera.rotation.x, y: camera.rotation.y, z: 0 }, 1000).onUpdate(() => p.lookAt(camera.position)).start();
+                });
+                new TWEEN.Tween(catSignMesh.position).to(SIGN_POS_DISPERSED, 1000).start();
+
+            } else if (newState === STATE.ZOOM) {
+                // 確保有實際照片可放大（排除佔位符）
+                const photoParticles = particles.filter(p => p.userData.isPhoto);
+                // 只有當 actual photo textures > 0 時才進行縮放
+                if (photoTextures.length > 1 && photoParticles.length > 0) { 
+                    const target = photoParticles[Math.floor(Math.random() * photoParticles.length)];
+                    zoomedParticleIndex = particles.indexOf(target);
+
+                    new TWEEN.Tween(target.position).to({ x: 0, y: 0, z: 25 }, 1000).easing(TWEEN.Easing.Cubic.Out).start();
+                    new TWEEN.Tween(target.scale).to({ x: 5, y: 5, z: 5 }, 1000).start();
+                    
+                    particles.forEach(p => {
+                        if (p !== target) {
+                            // 將非目標粒子推遠一點
+                            new TWEEN.Tween(p.position.z).to(p.userData.scatterPos.z - 5, 1000).start();
+                        }
+                    });
+                } else {
+                    // 如果沒有照片可放大，自動返回散開狀態。
+                    currentState = STATE.DISPERSED; 
+                }
+            }
+        }
+
+        // --- 主循環 ---
+
+        const clock = new THREE.Clock();
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            
+            TWEEN.update(time);
+
+            // 1. 場景旋轉邏輯
+            if (mediaPipeFailed) {
+                // 如果 MediaPipe 失敗，則啟用自動旋轉（優雅降級）
+                scene.rotation.y += 0.003;
+                scene.rotation.x = THREE.MathUtils.lerp(scene.rotation.x, Math.sin(time * 0.0001) * 0.1, 0.05);
+
+            } else if (currentState === STATE.COALESCED) {
+                // 聚合狀態：慢速自動旋轉
+                scene.rotation.y += 0.005;
+                scene.rotation.x = THREE.MathUtils.lerp(scene.rotation.x, 0, 0.05);
+
+            } else if (currentState === STATE.DISPERSED || currentState === STATE.ZOOM) {
+                // 散開/縮放狀態：手勢控制旋轉
+                scene.rotation.y = THREE.MathUtils.lerp(scene.rotation.y, targetRotationY, 0.05);
+                scene.rotation.x = THREE.MathUtils.lerp(scene.rotation.x, targetRotationX, 0.05);
+            }
+
+            // 2. 漂浮動畫和 LookAt 
+            particles.forEach((p, i) => {
+                if (currentState === STATE.DISPERSED && i !== zoomedParticleIndex) {
+                    p.position.y += Math.sin(time * 0.001 + p.userData.id) * 0.02;
+                    p.lookAt(camera.position);
+                } else if (currentState === STATE.COALESCED || mediaPipeFailed) {
+                    p.lookAt(0,0,0);
+                }
+            });
+
+            // 3. 氣球和花瓣動畫 (保持不變)
+            if (balloonGroup) {
+                balloonGroup.children.forEach(b => {
+                    b.position.y += b.userData.speed;
+                    b.position.x += Math.sin(time * 0.001 + b.position.y) * 0.02;
+                    if (b.position.y > 30) { b.position.y = -30; b.position.x = (Math.random()-0.5)*40; }
+                });
+            }
+
+            if (petalGroup) {
+                petalGroup.children.forEach(p => {
+                    p.position.y -= p.userData.fallSpeed;
+                    p.rotation.x += p.userData.rotSpeed;
+                    p.rotation.y += p.userData.rotSpeed;
+                    p.position.x += Math.sin(time * 0.002 + p.position.y) * 0.05;
+                    if (p.position.y < -30) { p.position.y = 30; p.position.x = (Math.random()-0.5)*50; }
+                });
+            }
+
+            // 4. 標語牌動畫 (輕微漂浮)
+            if (catSignMesh) {
+                // 確保牌子始終面向相機
+                if (catSignMesh.userData.lookAtCamera) {
+                    catSignMesh.lookAt(camera.position);
+                }
+                catSignMesh.position.y += Math.sin(time * 0.003) * 0.01;
+            }
+
+            composer.render();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // 運行
+        init();
+
+    </script>
+</body>
+</html>
